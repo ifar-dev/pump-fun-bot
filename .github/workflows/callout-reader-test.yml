@@ -1,0 +1,50 @@
+name: Pump Callout Reader Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_minutes:
+        description: "How long to watch the Callouts feed (1-9 minutes)"
+        required: true
+        default: "5"
+
+jobs:
+  callout-reader:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Callout Reader
+        env:
+          PUMP_API_TOKEN: ${{ secrets.PUMP_API_TOKEN }}
+          PUMP_RSC: ${{ secrets.PUMP_RSC }}
+          PUMP_CALLOUTS_URL: ${{ vars.PUMP_CALLOUTS_URL }}
+          POLL_INTERVAL_MS: "5000"
+          DEBUG_RAW: "true"
+        run: |
+          MINUTES="${{ inputs.run_minutes }}"
+
+          if ! [[ "$MINUTES" =~ ^[0-9]+$ ]] || [ "$MINUTES" -lt 1 ] || [ "$MINUTES" -gt 9 ]; then
+            echo "run_minutes must be an integer from 1 to 9"
+            exit 1
+          fi
+
+          echo "Starting Pump Callout Reader for ${MINUTES} minute(s)."
+          timeout "${MINUTES}m" npm run dev || STATUS=$?
+
+          if [ "${STATUS:-0}" -ne 0 ] && [ "${STATUS:-0}" -ne 124 ]; then
+            exit "${STATUS}"
+          fi
+
+          echo "Test window finished."

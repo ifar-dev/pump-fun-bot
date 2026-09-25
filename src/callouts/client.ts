@@ -1,5 +1,19 @@
 import { config } from "../config.js";
 
+/**
+ * pump.fun's frontend-api-v3 / advanced-api-v2 auth is via an `auth_token`
+ * cookie, not an Authorization header. This strips a few things users
+ * commonly paste by accident: a leading "auth_token=" label, a trailing
+ * ";" (cookie separator), or surrounding whitespace.
+ */
+function cleanToken(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^auth_token=/, "")
+    .replace(/;.*$/, "")
+    .trim();
+}
+
 export async function fetchCallouts(): Promise<unknown> {
   const url = new URL(config.calloutsUrl);
 
@@ -7,10 +21,12 @@ export async function fetchCallouts(): Promise<unknown> {
     url.searchParams.set("_rsc", config.rsc);
   }
 
+  const token = cleanToken(config.apiToken);
+
   const response = await fetch(url, {
     method: "GET",
     headers: {
-      Authorization: `Bearer ${config.apiToken}`,
+      Cookie: `auth_token=${token}`,
       Accept: "application/json"
     }
   });

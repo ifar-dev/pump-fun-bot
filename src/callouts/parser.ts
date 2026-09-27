@@ -5,17 +5,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function asString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  return null;
 }
 
 function asNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
 }
 
 function normalizeTimestamp(value: unknown): string {
-  if (typeof value === "string") {
+  if (typeof value === "string" && value.length > 0) {
     return value;
   }
 
@@ -28,18 +42,55 @@ function normalizeTimestamp(value: unknown): string {
   return new Date(0).toISOString();
 }
 
+function getString(
+  value: Record<string, unknown>,
+  ...keys: string[]
+): string | null {
+  for (const key of keys) {
+    const result = asString(value[key]);
+
+    if (result !== null) {
+      return result;
+    }
+  }
+
+  return null;
+}
+
+function getNumber(
+  value: Record<string, unknown>,
+  ...keys: string[]
+): number | null {
+  for (const key of keys) {
+    const result = asNumber(value[key]);
+
+    if (result !== null) {
+      return result;
+    }
+  }
+
+  return null;
+}
+
 function isCalloutItem(value: unknown): value is FomoCalloutItem {
   if (!isRecord(value)) {
     return false;
   }
 
+  /*
+   * FomoScan Callout records must have a stable ID and
+   * token mint/wallet information. Other display fields
+   * are allowed to be missing so one unusual Callout does
+   * not cause the entire feed to be discarded.
+   */
+  const id = getString(value, "id");
+  const wallet = getString(value, "wallet", "walletAddress");
+  const coinMint = getString(value, "coinMint", "mint");
+
   return (
-    typeof value.id === "string" &&
-    typeof value.wallet === "string" &&
-    typeof value.userName === "string" &&
-    typeof value.coinMint === "string" &&
-    typeof value.coinSymbol === "string" &&
-    typeof value.coinName === "string"
+    id !== null &&
+    wallet !== null &&
+    coinMint !== null
   );
 }
 
@@ -48,21 +99,33 @@ function getItems(payload: unknown): unknown[] {
     return [];
   }
 
-  // Response format: { items: [...] }
+  // Direct response: { items: [...] }
   if (Array.isArray(payload.items)) {
     return payload.items;
   }
 
-  // FomoScan response format: { data: [...] }
+  // FomoScan response: { data: [...] }
   if (Array.isArray(payload.data)) {
     return payload.data;
   }
 
-  // Alternative response format: { data: { items: [...] } }
-  const data = payload.data;
+  // FomoScan response: { data: { items: [...] } }
+  if (isRecord(payload.data)) {
+    const data = payload.data;
 
-  if (isRecord(data) && Array.isArray(data.items)) {
-    return data.items;
+    if (Array.isArray(data.items)) {
+      return data.items;
+    }
+
+    // Some API envelopes may use results instead of items.
+    if (Array.isArray(data.results)) {
+      return data.results;
+    }
+  }
+
+  // Additional fallback.
+  if (Array.isArray(payload.results)) {
+    return payload.results;
   }
 
   return [];
@@ -73,24 +136,52 @@ export function normalizeCallouts(
 ): NormalizedCallout[] {
   return getItems(payload)
     .filter(isCalloutItem)
-    .map((item) => ({
-      id: item.id,
-      wallet: item.wallet,
-      userName: item.userName,
-      xUsername: asString(item.xUsername),
-      isVerified: item.isVerified === true,
-      mint: item.coinMint,
-      chain: asString(item.chain),
-      ticker: item.coinSymbol,
-      tokenName: item.coinName,
-      thesis: asString(item.thesis),
-      mediaUrl: asString(item.mediaUrl),
-      calledOutAtMcap: asNumber(item.calledOutAtMcap),
-      multiple: asNumber(item.multiple),
-      maxMultiplier: asNumber(item.maxMultiplier),
-      createdAt: normalizeTimestamp(item.createdAt),
-      raw: item
-    }));
+    .map((value) => {
+      const item = value as Record<string, unknown>;
+
+      const wallet =
+        getString(item, "wallet", "walletAddress") ?? "";
+
+      const userName =
+        getString(item, "userName", "username", "user", "handle") ??
+        "unknown";
+
+      const coinMint =
+        getString(item, "coinMint", "mint") ?? "";
+
+      const coinSymbol =
+        getString(item, "coinSymbol", "symbol", "ticker") ??
+        "UNKNOWN";
+
+      const coinName =
+        getString(item, "coinName", "tokenName", "name") ??
+        "Unknown Token";
+
+      return {
+        id: getString(item, "id") ?? "",
+        wallet,
+        userName,
+        xUsername: getString(item, "xUsername", "twitterUsername"),
+        isVerified: item.isVerified === true,
+        mint: coinMint,
+        chain: getString(item, "chain", "chainId"),
+        ticker: coinSymbol,
+        tokenName: coinName,
+        thesis: getString(item, "thesis"),
+        mediaUrl: getString(item, "mediaUrl"),
+        calledOutAtMcap: getNumber(
+          item,
+          "calledOutAtMcap",
+          "calloutMcap"
+        ),
+        multiple: getNumber(item, "multiple"),
+        maxMultiplier: getNumber(item, "maxMultiplier"),
+        createdAt: normalizeTimestamp(
+          item.createdAt ?? item.calloutTimestamp ?? item.timestamp
+        ),
+        raw: item as FomoCalloutItem
+      };
+    });
 }
 
 export function getNextBefore(payload: unknown): string | null {
@@ -104,10 +195,7 @@ export function getNextBefore(payload: unknown): string | null {
 
   const data = payload.data;
 
-  if (
-    isRecord(data) &&
-    typeof data.nextBefore === "string"
-  ) {
+  if (isRecord(data) && typeof data.nextBefore === "string") {
     return data.nextBefore;
   }
 
@@ -123,10 +211,28 @@ export function getCount(payload: unknown): number {
     return payload.count;
   }
 
+  if (Array.isArray(payload.items)) {
+    return payload.items.length;
+  }
+
+  if (Array.isArray(payload.data)) {
+    return payload.data.length;
+  }
+
   const data = payload.data;
 
-  if (isRecord(data) && typeof data.count === "number") {
-    return data.count;
+  if (isRecord(data)) {
+    if (typeof data.count === "number") {
+      return data.count;
+    }
+
+    if (Array.isArray(data.items)) {
+      return data.items.length;
+    }
+
+    if (Array.isArray(data.results)) {
+      return data.results.length;
+    }
   }
 
   return 0;

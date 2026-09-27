@@ -15,7 +15,9 @@ function asNumber(value: unknown): number | null {
 }
 
 function normalizeTimestamp(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") {
+    return value;
+  }
 
   if (typeof value === "number" && Number.isFinite(value)) {
     return new Date(
@@ -27,7 +29,9 @@ function normalizeTimestamp(value: unknown): string {
 }
 
 function isCalloutItem(value: unknown): value is FomoCalloutItem {
-  if (!isRecord(value)) return false;
+  if (!isRecord(value)) {
+    return false;
+  }
 
   return (
     typeof value.id === "string" &&
@@ -40,19 +44,21 @@ function isCalloutItem(value: unknown): value is FomoCalloutItem {
 }
 
 function getItems(payload: unknown): unknown[] {
-  if (!isRecord(payload)) return [];
+  if (!isRecord(payload)) {
+    return [];
+  }
 
-  // Direct items array
+  // Response format: { items: [...] }
   if (Array.isArray(payload.items)) {
     return payload.items;
   }
 
-  // FomoScan response: { data: [...] }
+  // FomoScan response format: { data: [...] }
   if (Array.isArray(payload.data)) {
     return payload.data;
   }
 
-  // Alternative envelope: { data: { items: [...] } }
+  // Alternative response format: { data: { items: [...] } }
   const data = payload.data;
 
   if (isRecord(data) && Array.isArray(data.items)) {
@@ -88,7 +94,9 @@ export function normalizeCallouts(
 }
 
 export function getNextBefore(payload: unknown): string | null {
-  if (!isRecord(payload)) return null;
+  if (!isRecord(payload)) {
+    return null;
+  }
 
   if (typeof payload.nextBefore === "string") {
     return payload.nextBefore;
@@ -107,7 +115,9 @@ export function getNextBefore(payload: unknown): string | null {
 }
 
 export function getCount(payload: unknown): number {
-  if (!isRecord(payload)) return 0;
+  if (!isRecord(payload)) {
+    return 0;
+  }
 
   if (typeof payload.count === "number") {
     return payload.count;

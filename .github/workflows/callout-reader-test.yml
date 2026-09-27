@@ -32,7 +32,7 @@ jobs:
           POLL_INTERVAL_MS: "30000"
           FOLLOWED_WALLETS: ""
           FOLLOWED_USERNAMES: ""
-          DEBUG_RAW: "false"
+          DEBUG_RAW: "true"
           BASELINE_ON_START: "false"
 
         run: |

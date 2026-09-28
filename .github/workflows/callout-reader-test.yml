@@ -1,19 +1,27 @@
-name: FomoScan WebSocket Test
+name: FomoScan Callout Reader
 
-run-name: FomoScan WS Test - ${{ inputs.duration }}s
+run-name: FomoScan REST Test - ${{ inputs.duration }}m - ${{ inputs.interval }}ms
 
 on:
   workflow_dispatch:
     inputs:
       duration:
-        description: "How many seconds to keep the WebSocket open"
+        description: "How many minutes to run the Callout reader"
         required: true
-        default: "10"
+        default: "5"
+        type: string
+
+      interval:
+        description: "Polling interval in milliseconds"
+        required: true
+        default: "2000"
         type: string
 
 jobs:
-  websocket-test:
+  callout-reader:
     runs-on: ubuntu-latest
+
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -24,104 +32,32 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install ws
-        run: npm install ws
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Run FomoScan WebSocket test
+      - name: Run FomoScan Callout reader
         env:
           FOMOSCAN_API_KEY: ${{ secrets.FOMOSCAN_API_KEY }}
-          TEST_DURATION: ${{ inputs.duration }}
+          FOMOSCAN_CALLOUTS_URL: https://api.fomoscan.sh/v2/pump/thesis
+          POLL_INTERVAL_MS: ${{ inputs.interval }}
+          FOLLOWED_WALLETS: ${{ vars.FOLLOWED_WALLETS }}
+          FOLLOWED_USERNAMES: ${{ vars.FOLLOWED_USERNAMES }}
+          DEBUG_RAW: "false"
+          BASELINE_ON_START: "false"
+
         run: |
-          node <<'EOF'
-          const WebSocket = require("ws");
+          DURATION_MINUTES="${{ inputs.duration }}"
 
-          const apiKey = process.env.FOMOSCAN_API_KEY;
-          const duration = Number(process.env.TEST_DURATION || 10);
+          echo "=========================================="
+          echo "FomoScan Pump.fun Callout Reader"
+          echo "=========================================="
+          echo "Duration : ${DURATION_MINUTES} minute(s)"
+          echo "Interval : ${POLL_INTERVAL_MS} ms"
+          echo "Endpoint : ${FOMOSCAN_CALLOUTS_URL}"
+          echo "=========================================="
 
-          if (!apiKey) {
-            throw new Error("FOMOSCAN_API_KEY secret is missing.");
-          }
+          timeout "${DURATION_MINUTES}m" npm start || STATUS=$?
 
-          console.log(`Testing FomoScan WebSocket for ${duration} seconds...`);
-          console.log("Connecting...");
-
-          const ws = new WebSocket(
-            "wss://api.fomoscan.sh/v2/ws",
-            {
-              headers: {
-                Authorization: `Bearer ${apiKey}`
-              }
-            }
-          );
-
-          let messageCount = 0;
-          let thesisCount = 0;
-
-          ws.on("open", () => {
-            console.log("WEBSOCKET_CONNECTED");
-
-            const subscription = {
-              type: "subscribe",
-              subscription: {
-                type: "all"
-              }
-            };
-
-            console.log("Sending subscription:");
-            console.log(JSON.stringify(subscription));
-
-            ws.send(JSON.stringify(subscription));
-
-            console.log(
-              `Listening for ${duration} seconds...`
-            );
-
-            setTimeout(() => {
-              console.log("");
-              console.log("TEST_TIME_FINISHED");
-              console.log(`Messages received: ${messageCount}`);
-              console.log(`Thesis messages: ${thesisCount}`);
-              console.log("Closing WebSocket...");
-
-              ws.close(1000, "Test finished");
-            }, duration * 1000);
-          });
-
-          ws.on("message", (data) => {
-            messageCount++;
-
-            const text = data.toString();
-
-            console.log("");
-            console.log(`--- MESSAGE ${messageCount} ---`);
-            console.log(text);
-
-            try {
-              const message = JSON.parse(text);
-
-              if (message.type === "thesis") {
-                thesisCount++;
-
-                console.log("");
-                console.log("***** THESIS EVENT *****");
-                console.log(JSON.stringify(message.data, null, 2));
-                console.log("************************");
-              }
-            } catch {
-              console.log("Non-JSON message received.");
-            }
-          });
-
-          ws.on("error", (error) => {
-            console.error("WEBSOCKET_ERROR");
-            console.error(error.message);
-          });
-
-          ws.on("close", (code, reason) => {
-            console.log("");
-            console.log(`WEBSOCKET_CLOSED code=${code}`);
-            console.log(
-              `reason=${reason?.toString() || "(none)"}`
-            );
-          });
-          EOF
+          if [ "${STATUS:-0}" -ne 0 ] && [ "${STATUS:-0}" -ne 124 ]; then
+            exit "${STATUS}"
+          fi

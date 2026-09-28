@@ -1,62 +1,74 @@
-import "dotenv/config";
+name: FomoScan Callout Reader
 
-function required(name: string): string {
-  const value = process.env[name]?.trim();
+run-name: FomoScan REST Test - ${{ inputs.duration }}m - ${{ inputs.interval }}ms
 
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "How many minutes to run the Callout reader"
+        required: true
+        default: "5"
+        type: string
 
-  return value;
-}
+      interval:
+        description: "Polling interval in milliseconds"
+        required: true
+        default: "2000"
+        type: string
 
-function positiveInt(name: string, fallback: number): number {
-  const value = Number(process.env[name] || fallback);
+jobs:
+  callout-reader:
+    runs-on: ubuntu-latest
 
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer`);
-  }
+    timeout-minutes: 10
 
-  return value;
-}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-function positiveNumber(name: string, fallback: number): number {
-  const value = Number(process.env[name] || fallback);
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`${name} must be a positive number`);
-  }
+      - name: Install dependencies
+        run: npm install
 
-  return value;
-}
+      - name: Build TypeScript
+        run: npm run build
 
-function csvSet(name: string): Set<string> {
-  return new Set(
-    (process.env[name] || "")
-      .split(",")
-      .map((v) => v.trim().toLowerCase().replace(/^@/, ""))
-      .filter(Boolean)
-  );
-}
+      - name: Run FomoScan Callout reader
+        env:
+          FOMOSCAN_API_KEY: ${{ secrets.FOMOSCAN_API_KEY }}
 
-export const config = {
-  fomoApiKey: required("FOMOSCAN_API_KEY"),
+          FOMOSCAN_CALLOUTS_URL: https://api.fomoscan.sh/v2/pump/thesis
 
-  fomoCalloutsUrl:
-    process.env.FOMOSCAN_CALLOUTS_URL?.trim() ||
-    "https://api.fomoscan.sh/v2/pump/thesis",
+          POLL_INTERVAL_MS: ${{ inputs.interval }}
 
-  pollIntervalMs: positiveInt("POLL_INTERVAL_MS", 2000),
+          FOLLOWED_WALLETS: "9LXWa7V3AE15VfBupcx5gDts2ix3Y9NzbcKZKjkkq6hV,CE44oKS3wpUerx8afyeii56u5oQjBLZknzm4Q2CYHUz9,5FnE3q4tcDkEjRGuHgcxoBLXoZjWXDE5xEpJyneHDc9"
 
-  followedWallets: csvSet("FOLLOWED_WALLETS"),
+          FOLLOWED_USERNAMES: "@rikz_,@ely,@megz0101"
 
-  followedUsernames: csvSet("FOLLOWED_USERNAMES"),
+          BUY_AMOUNT_SOL: "0.04"
 
-  buyAmountSol: positiveNumber("BUY_AMOUNT_SOL", 0.04),
+          DEBUG_RAW: "false"
 
-  debugRaw:
-    (process.env.DEBUG_RAW || "false").toLowerCase() === "true",
+          BASELINE_ON_START: "false"
 
-  baselineOnStart:
-    (process.env.BASELINE_ON_START || "false").toLowerCase() === "true",
-};
+        run: |
+          DURATION_MINUTES="${{ inputs.duration }}"
+
+          echo "=========================================="
+          echo "FomoScan Pump.fun Callout Reader"
+          echo "=========================================="
+          echo "Duration : ${DURATION_MINUTES} minute(s)"
+          echo "Interval : ${POLL_INTERVAL_MS} ms"
+          echo "Endpoint : ${FOMOSCAN_CALLOUTS_URL}"
+          echo "=========================================="
+
+          timeout "${DURATION_MINUTES}m" npm start || STATUS=$?
+
+          if [ "${STATUS:-0}" -ne 0 ] && [ "${STATUS:-0}" -ne 124 ]; then
+            exit "${STATUS}"
+          fi

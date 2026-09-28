@@ -2,11 +2,6 @@ name: FomoScan WebSocket Test
 
 on:
   workflow_dispatch:
-    inputs:
-      run_seconds:
-        description: "How long to listen to the WebSocket (10-60 seconds)"
-        required: true
-        default: "30"
 
 jobs:
   websocket-test:
@@ -22,24 +17,18 @@ jobs:
       - name: Install WebSocket client
         run: npm install ws
 
-      - name: Test FomoScan WebSocket
+      - name: Test FomoScan Firehose
         env:
           FOMOSCAN_API_KEY: ${{ secrets.FOMOSCAN_API_KEY }}
-          RUN_SECONDS: ${{ inputs.run_seconds }}
+
         run: |
           node <<'NODE'
           const WebSocket = require("ws");
 
           const apiKey = process.env.FOMOSCAN_API_KEY;
-          const seconds = Number(process.env.RUN_SECONDS || "30");
 
           if (!apiKey) {
             console.error("FOMOSCAN_API_KEY is missing.");
-            process.exit(1);
-          }
-
-          if (!Number.isInteger(seconds) || seconds < 10 || seconds > 60) {
-            console.error("RUN_SECONDS must be between 10 and 60.");
             process.exit(1);
           }
 
@@ -47,7 +36,8 @@ jobs:
 
           console.log("Connecting to FomoScan WebSocket...");
           console.log(`URL: ${url}`);
-          console.log(`Listening for ${seconds} seconds...`);
+          console.log("Test duration: 10 seconds");
+          console.log("Subscription: firehose");
 
           const ws = new WebSocket(url, {
             headers: {
@@ -57,13 +47,23 @@ jobs:
           });
 
           let messageCount = 0;
+          let thesisCount = 0;
 
           ws.on("open", () => {
             console.log("WEBSOCKET_CONNECTED");
 
+            const subscription = {
+              type: "subscribe",
+              subscription: {
+                type: "firehose"
+              }
+            };
+
             console.log(
-              "Connection established. Waiting for stream messages..."
+              "Sending firehose subscription..."
             );
+
+            ws.send(JSON.stringify(subscription));
           });
 
           ws.on("message", (data) => {
@@ -75,10 +75,31 @@ jobs:
 
             try {
               const parsed = JSON.parse(text);
+
               console.dir(parsed, {
                 depth: 8,
                 maxArrayLength: 10
               });
+
+              if (parsed.type === "thesis") {
+                thesisCount++;
+
+                const thesis = parsed.data || {};
+
+                console.log("\nTHESIS EVENT DETECTED");
+                console.log(
+                  `ID: ${thesis.id ?? "n/a"}`
+                );
+                console.log(
+                  `Token address: ${thesis.tokenAddress ?? "n/a"}`
+                );
+                console.log(
+                  `Token network: ${thesis.tokenNetwork ?? "n/a"}`
+                );
+                console.log(
+                  `Created: ${thesis.createdAt ?? "n/a"}`
+                );
+              }
             } catch {
               console.log(text.slice(0, 10000));
             }
@@ -87,7 +108,9 @@ jobs:
           ws.on("error", (error) => {
             console.error(
               "WEBSOCKET_ERROR:",
-              error instanceof Error ? error.message : error
+              error instanceof Error
+                ? error.message
+                : error
             );
           });
 
@@ -98,14 +121,20 @@ jobs:
           });
 
           setTimeout(() => {
+            console.log("\n========== TEST COMPLETE ==========");
             console.log(
-              `\nFinished. Messages received: ${messageCount}`
+              `Messages received: ${messageCount}`
+            );
+            console.log(
+              `Thesis events received: ${thesisCount}`
             );
 
             if (ws.readyState === WebSocket.OPEN) {
-              ws.close(1000, "Test finished");
+              ws.close(1000, "10 second test finished");
             }
 
-            setTimeout(() => process.exit(0), 1000);
-          }, seconds * 1000);
+            setTimeout(() => {
+              process.exit(0);
+            }, 1000);
+          }, 10000);
           NODE

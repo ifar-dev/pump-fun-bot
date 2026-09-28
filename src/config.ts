@@ -46,9 +46,10 @@ export const config = {
     process.env.FOMOSCAN_CALLOUTS_URL?.trim() ||
     "https://api.fomoscan.sh/v2/pump/thesis",
 
-  pollIntervalMs: positiveInt("POLL_INTERVAL_MS", 300000),
+  pollIntervalMs: positiveInt("POLL_INTERVAL_MS", 2000),
 
   followedWallets: csvSet("FOLLOWED_WALLETS"),
+
   followedUsernames: csvSet("FOLLOWED_USERNAMES"),
 
   buyAmountSol: positiveNumber("BUY_AMOUNT_SOL", 0.04),
@@ -57,5 +58,5 @@ export const config = {
     (process.env.DEBUG_RAW || "false").toLowerCase() === "true",
 
   baselineOnStart:
-    (process.env.BASELINE_ON_START || "false").toLowerCase() === "true"
+    (process.env.BASELINE_ON_START || "false").toLowerCase() === "true",
 };

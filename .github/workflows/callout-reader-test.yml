@@ -41,11 +41,19 @@ jobs:
       - name: Run FomoScan Callout reader
         env:
           FOMOSCAN_API_KEY: ${{ secrets.FOMOSCAN_API_KEY }}
+
           FOMOSCAN_CALLOUTS_URL: https://api.fomoscan.sh/v2/pump/thesis
+
           POLL_INTERVAL_MS: ${{ inputs.interval }}
-          FOLLOWED_WALLETS: ${{ vars.FOLLOWED_WALLETS }}
-          FOLLOWED_USERNAMES: ${{ vars.FOLLOWED_USERNAMES }}
+
+          FOLLOWED_WALLETS: "9LXWa7V3AE15VfBupcx5gDts2ix3Y9NzbcKZKjkkq6hV,CE44oKS3wpUerx8afyeii56u5oQjBLZknzm4Q2CYHUz9,5FnE3q4tcDkEjRGuHgcxoBLXoZjWXDE5xEpJyneHDc9"
+
+          FOLLOWED_USERNAMES: "@rikz_,@ely,@megz0101"
+
+          BUY_AMOUNT_SOL: "0.04"
+
           DEBUG_RAW: "false"
+
           BASELINE_ON_START: "false"
 
         run: |

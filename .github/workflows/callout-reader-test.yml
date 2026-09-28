@@ -1,55 +1,111 @@
-name: Pump Callout Reader Test
+name: FomoScan WebSocket Test
 
 on:
   workflow_dispatch:
     inputs:
-      run_minutes:
-        description: "How long to watch the Callouts feed (1-9 minutes)"
+      run_seconds:
+        description: "How long to listen to the WebSocket (10-60 seconds)"
         required: true
-        default: "1"
+        default: "30"
 
 jobs:
-  callout-reader:
+  websocket-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install WebSocket client
+        run: npm install ws
 
-      - name: Run FomoScan Callout Reader
+      - name: Test FomoScan WebSocket
         env:
           FOMOSCAN_API_KEY: ${{ secrets.FOMOSCAN_API_KEY }}
-          FOMOSCAN_CALLOUTS_URL: ${{ vars.FOMOSCAN_CALLOUTS_URL }}
-          POLL_INTERVAL_MS: "2000"
-          FOLLOWED_WALLETS: ""
-          FOLLOWED_USERNAMES: ""
-          DEBUG_RAW: "false"
-          BASELINE_ON_START: "false"
-
+          RUN_SECONDS: ${{ inputs.run_seconds }}
         run: |
-          MINUTES="${{ inputs.run_minutes }}"
+          node <<'NODE'
+          const WebSocket = require("ws");
 
-          if ! [[ "$MINUTES" =~ ^[0-9]+$ ]] || [ "$MINUTES" -lt 1 ] || [ "$MINUTES" -gt 9 ]; then
-            echo "run_minutes must be an integer from 1 to 9"
-            exit 1
-          fi
+          const apiKey = process.env.FOMOSCAN_API_KEY;
+          const seconds = Number(process.env.RUN_SECONDS || "30");
 
-          echo "Starting FomoScan Pump Callout Reader for ${MINUTES} minute(s)."
-          echo "Polling interval: 2000 ms"
+          if (!apiKey) {
+            console.error("FOMOSCAN_API_KEY is missing.");
+            process.exit(1);
+          }
 
-          timeout "${MINUTES}m" npm run dev || STATUS=$?
+          if (!Number.isInteger(seconds) || seconds < 10 || seconds > 60) {
+            console.error("RUN_SECONDS must be between 10 and 60.");
+            process.exit(1);
+          }
 
-          if [ "${STATUS:-0}" -ne 0 ] && [ "${STATUS:-0}" -ne 124 ]; then
-            exit "${STATUS}"
-          fi
+          const url = "wss://api.fomoscan.sh/v2/ws";
 
-          echo "Test window finished."
+          console.log("Connecting to FomoScan WebSocket...");
+          console.log(`URL: ${url}`);
+          console.log(`Listening for ${seconds} seconds...`);
+
+          const ws = new WebSocket(url, {
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              Accept: "application/json"
+            }
+          });
+
+          let messageCount = 0;
+
+          ws.on("open", () => {
+            console.log("WEBSOCKET_CONNECTED");
+
+            console.log(
+              "Connection established. Waiting for stream messages..."
+            );
+          });
+
+          ws.on("message", (data) => {
+            messageCount++;
+
+            const text = data.toString();
+
+            console.log(`\n--- MESSAGE ${messageCount} ---`);
+
+            try {
+              const parsed = JSON.parse(text);
+              console.dir(parsed, {
+                depth: 8,
+                maxArrayLength: 10
+              });
+            } catch {
+              console.log(text.slice(0, 10000));
+            }
+          });
+
+          ws.on("error", (error) => {
+            console.error(
+              "WEBSOCKET_ERROR:",
+              error instanceof Error ? error.message : error
+            );
+          });
+
+          ws.on("close", (code, reason) => {
+            console.log(
+              `WEBSOCKET_CLOSED code=${code} reason=${reason.toString()}`
+            );
+          });
+
+          setTimeout(() => {
+            console.log(
+              `\nFinished. Messages received: ${messageCount}`
+            );
+
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.close(1000, "Test finished");
+            }
+
+            setTimeout(() => process.exit(0), 1000);
+          }, seconds * 1000);
+          NODE

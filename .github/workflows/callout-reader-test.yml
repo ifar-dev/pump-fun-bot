@@ -1,54 +1,23 @@
-name: Pump Callout Reader Test
+name: FomoScan Account Check
 
 on:
   workflow_dispatch:
-    inputs:
-      run_minutes:
-        description: "How long to watch the Callouts feed (1-9 minutes)"
-        required: true
-        default: "1"
 
 jobs:
-  callout-reader:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run FomoScan Callout Reader
+      - name: Check FomoScan account
         env:
           FOMOSCAN_API_KEY: ${{ secrets.FOMOSCAN_API_KEY }}
-          FOMOSCAN_CALLOUTS_URL: ${{ vars.FOMOSCAN_CALLOUTS_URL }}
-          POLL_INTERVAL_MS: "30000"
-          FOLLOWED_WALLETS: ""
-          FOLLOWED_USERNAMES: ""
-          DEBUG_RAW: "true"
-          BASELINE_ON_START: "false"
-
         run: |
-          MINUTES="${{ inputs.run_minutes }}"
+          set -e
 
-          if ! [[ "$MINUTES" =~ ^[0-9]+$ ]] || [ "$MINUTES" -lt 1 ] || [ "$MINUTES" -gt 9 ]; then
-            echo "run_minutes must be an integer from 1 to 9"
-            exit 1
-          fi
+          RESPONSE=$(curl -sS \
+            -H "Authorization: Bearer ${FOMOSCAN_API_KEY}" \
+            -H "Accept: application/json" \
+            "https://api.fomoscan.sh/v2/me")
 
-          echo "Starting FomoScan Pump Callout Reader for ${MINUTES} minute(s)."
-
-          timeout "${MINUTES}m" npm run dev || STATUS=$?
-
-          if [ "${STATUS:-0}" -ne 0 ] && [ "${STATUS:-0}" -ne 124 ]; then
-            exit "${STATUS}"
-          fi
-
-          echo "Test window finished."
+          echo "FomoScan account response:"
+          echo "$RESPONSE"

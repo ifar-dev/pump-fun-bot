@@ -1,50 +1,58 @@
 name: FomoScan WebSocket Test
 
+run-name: FomoScan WS Test - ${{ inputs.duration }}s
+
 on:
   workflow_dispatch:
+    inputs:
+      duration:
+        description: "How many seconds to keep the WebSocket open"
+        required: true
+        default: "10"
+        type: string
 
 jobs:
   websocket-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install WebSocket client
+      - name: Install ws
         run: npm install ws
 
-      - name: Test FomoScan Firehose
+      - name: Run FomoScan WebSocket test
         env:
           FOMOSCAN_API_KEY: ${{ secrets.FOMOSCAN_API_KEY }}
-
+          TEST_DURATION: ${{ inputs.duration }}
         run: |
-          node <<'NODE'
+          node <<'EOF'
           const WebSocket = require("ws");
 
           const apiKey = process.env.FOMOSCAN_API_KEY;
+          const duration = Number(process.env.TEST_DURATION || 10);
 
           if (!apiKey) {
-            console.error("FOMOSCAN_API_KEY is missing.");
-            process.exit(1);
+            throw new Error("FOMOSCAN_API_KEY secret is missing.");
           }
 
-          const url = "wss://api.fomoscan.sh/v2/ws";
+          console.log(`Testing FomoScan WebSocket for ${duration} seconds...`);
+          console.log("Connecting...");
 
-          console.log("Connecting to FomoScan WebSocket...");
-          console.log(`URL: ${url}`);
-          console.log("Test duration: 10 seconds");
-          console.log("Subscription: firehose");
-
-          const ws = new WebSocket(url, {
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              Accept: "application/json"
+          const ws = new WebSocket(
+            "wss://api.fomoscan.sh/v2/ws",
+            {
+              headers: {
+                Authorization: `Bearer ${apiKey}`
+              }
             }
-          });
+          );
 
           let messageCount = 0;
           let thesisCount = 0;
@@ -55,15 +63,28 @@ jobs:
             const subscription = {
               type: "subscribe",
               subscription: {
-                type: "firehose"
+                type: "all"
               }
             };
 
-            console.log(
-              "Sending firehose subscription..."
-            );
+            console.log("Sending subscription:");
+            console.log(JSON.stringify(subscription));
 
             ws.send(JSON.stringify(subscription));
+
+            console.log(
+              `Listening for ${duration} seconds...`
+            );
+
+            setTimeout(() => {
+              console.log("");
+              console.log("TEST_TIME_FINISHED");
+              console.log(`Messages received: ${messageCount}`);
+              console.log(`Thesis messages: ${thesisCount}`);
+              console.log("Closing WebSocket...");
+
+              ws.close(1000, "Test finished");
+            }, duration * 1000);
           });
 
           ws.on("message", (data) => {
@@ -71,70 +92,36 @@ jobs:
 
             const text = data.toString();
 
-            console.log(`\n--- MESSAGE ${messageCount} ---`);
+            console.log("");
+            console.log(`--- MESSAGE ${messageCount} ---`);
+            console.log(text);
 
             try {
-              const parsed = JSON.parse(text);
+              const message = JSON.parse(text);
 
-              console.dir(parsed, {
-                depth: 8,
-                maxArrayLength: 10
-              });
-
-              if (parsed.type === "thesis") {
+              if (message.type === "thesis") {
                 thesisCount++;
 
-                const thesis = parsed.data || {};
-
-                console.log("\nTHESIS EVENT DETECTED");
-                console.log(
-                  `ID: ${thesis.id ?? "n/a"}`
-                );
-                console.log(
-                  `Token address: ${thesis.tokenAddress ?? "n/a"}`
-                );
-                console.log(
-                  `Token network: ${thesis.tokenNetwork ?? "n/a"}`
-                );
-                console.log(
-                  `Created: ${thesis.createdAt ?? "n/a"}`
-                );
+                console.log("");
+                console.log("***** THESIS EVENT *****");
+                console.log(JSON.stringify(message.data, null, 2));
+                console.log("************************");
               }
             } catch {
-              console.log(text.slice(0, 10000));
+              console.log("Non-JSON message received.");
             }
           });
 
           ws.on("error", (error) => {
-            console.error(
-              "WEBSOCKET_ERROR:",
-              error instanceof Error
-                ? error.message
-                : error
-            );
+            console.error("WEBSOCKET_ERROR");
+            console.error(error.message);
           });
 
           ws.on("close", (code, reason) => {
+            console.log("");
+            console.log(`WEBSOCKET_CLOSED code=${code}`);
             console.log(
-              `WEBSOCKET_CLOSED code=${code} reason=${reason.toString()}`
+              `reason=${reason?.toString() || "(none)"}`
             );
           });
-
-          setTimeout(() => {
-            console.log("\n========== TEST COMPLETE ==========");
-            console.log(
-              `Messages received: ${messageCount}`
-            );
-            console.log(
-              `Thesis events received: ${thesisCount}`
-            );
-
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.close(1000, "10 second test finished");
-            }
-
-            setTimeout(() => {
-              process.exit(0);
-            }, 1000);
-          }, 10000);
-          NODE
+          EOF

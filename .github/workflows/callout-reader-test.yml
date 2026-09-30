@@ -46,9 +46,9 @@ jobs:
 
           POLL_INTERVAL_MS: ${{ inputs.interval }}
 
-          FOLLOWED_WALLETS: "9LXWa7V3AE15VfBupcx5gDts2ix3Y9NzbcKZKjkkq6hV,CE44oKS3wpUerx8afyeii56u5oQjBLZknzm4Q2CYHUz9,5FnE3q4tcDkEjRGuHgcxoBLXoZjWXDE5xEpJyneHDc9"
+          FOLLOWED_WALLETS: "9LXWa7V3AE15VfBupcx5gDts2ix3Y9NzbcKZKjkkq6hV,CE44oKS3wpUerx8afyeii56u5oQjBLZknzm4Q2CYHUz9,5FnE3q4tcDkEjRGuHgcxoBLXoZjWXDE5xEpJyneHDc,2ksQ77e9e5SS6VA6poanRGWfkU3R4R5wZnptbJHb2nx9,5YRgrP3mjGzrzirYYN5HAQH19cTYREYwGxW6XRJQUzij,6FWhUybWmnjsQ933v2r6o7bhEG5yH9g9XsV7NVWKj5EW,FNcrF6nt9BXswJrHom4hNmXCeW9no2C8wKh5UqdP8ueu"
 
-          FOLLOWED_USERNAMES: "@rikz_,@ely,@megz0101"
+          FOLLOWED_USERNAMES: "@rikz_,@ely,@megz0101,@Anglio,@slingoor,@whereslodo01,@archelon"
 
           BUY_AMOUNT_SOL: "0.04"
 
